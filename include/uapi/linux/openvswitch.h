@@ -1,6 +1,6 @@
 
 /*
- * Copyright (c) 2007-2013 Nicira, Inc.
+ * Copyright (c) 2007-2015 Nicira, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -569,6 +569,17 @@ struct ovs_action_push_vlan {
 	__be16 vlan_tci;	/* 802.1Q TCI (VLAN ID and priority). */
 };
 
+/**
+ * struct ovs_action_bpf_prog - %OVS_ACTION_ATTR_BPF_PROG action argument.
+ *
+ * XXX  The argument size is fixed for now.
+ */
+struct ovs_action_bpf_prog {
+	__be32 prog_fd;
+	__be32 arg0;
+	__be32 arg1;
+};
+
 /* Data path hash algorithm for computing Datapath hash.
  *
  * The algorithm type only specifies the fields in a flow
@@ -631,10 +642,26 @@ enum ovs_action_attr {
 	OVS_ACTION_ATTR_HASH,	      /* struct ovs_action_hash. */
 	OVS_ACTION_ATTR_PUSH_MPLS,    /* struct ovs_action_push_mpls. */
 	OVS_ACTION_ATTR_POP_MPLS,     /* __be16 ethertype. */
+	OVS_ACTION_ATTR_SET_MASKED,   /* place holder */
+	OVS_ACTION_ATTR_BPF_PROG,     /* strcut ovs_action_bpf_prog */
 
 	__OVS_ACTION_ATTR_MAX
 };
 
 #define OVS_ACTION_ATTR_MAX (__OVS_ACTION_ATTR_MAX - 1)
 
+/* integer value in 'imm' field of BPF_CALL instruction selects which OVS helper
+ * function eBPF program intends to call
+ */
+enum ovs_bpf_func_id {
+	OVS_BPF_FUNC_unspec,
+	OVS_BPF_FUNC_output,          /* int ovs_bpf_output(ctxt) */
+	__OVS_BPF_FUNC_MAX_ID,
+};
+
+struct ovs_bpf_action_ctxt {
+	void *skb;
+	u32  arg0;
+	u32  arg1;
+};
 #endif /* _LINUX_OPENVSWITCH_H */
