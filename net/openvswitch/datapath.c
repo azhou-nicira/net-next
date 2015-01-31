@@ -699,6 +699,8 @@ static size_t ovs_flow_cmd_msg_size(const struct sw_flow_actions *acts,
 		len += nla_total_size(ovs_key_attr_size());
 
 	/* OVS_FLOW_ATTR_ACTIONS */
+	/* XXX this logic needs to be fixed to accommodate BPF_PROG action
+	 * will expand the run time action size.   */
 	if (should_fill_actions(ufid_flags))
 		len += nla_total_size(acts->actions_len);
 
@@ -1017,7 +1019,7 @@ err_unlock_ovs:
 	ovs_unlock();
 	kfree_skb(reply);
 err_kfree_acts:
-	kfree(acts);
+	free_flow_actions(acts);
 err_kfree_flow:
 	ovs_flow_free(new_flow, false);
 error:
@@ -1152,7 +1154,7 @@ err_unlock_ovs:
 	ovs_unlock();
 	kfree_skb(reply);
 err_kfree_acts:
-	kfree(acts);
+	free_flow_actions(acts);
 error:
 	return error;
 }

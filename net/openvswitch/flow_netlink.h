@@ -68,6 +68,14 @@ int ovs_nla_copy_actions(const struct nlattr *attr,
 int ovs_nla_put_actions(const struct nlattr *attr,
 			int len, struct sk_buff *skb);
 
+void free_flow_actions(struct sw_flow_actions *);
 void ovs_nla_free_flow_actions(struct sw_flow_actions *);
+
+struct ovs_action_bpf_runtime {
+	uint32_t fd;
+	uint32_t arg0;
+	uint32_t arg1;
+	struct bpf_prog *prog;
+};
 
 #endif /* flow_netlink.h */

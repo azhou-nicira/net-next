@@ -42,6 +42,7 @@
 #include <linux/icmp.h>
 #include <linux/icmpv6.h>
 #include <linux/rculist.h>
+#include <linux/bpf.h>
 #include <net/geneve.h>
 #include <net/ip.h>
 #include <net/ipv6.h>
@@ -1546,11 +1547,38 @@ static struct sw_flow_actions *nla_alloc_flow_actions(int size, bool log)
 	return sfa;
 }
 
+void free_flow_actions(struct sw_flow_actions *sf_acts)
+{
+	const struct nlattr *a;
+	int rem;
+	struct ovs_action_bpf_runtime *rt;
+
+	nla_for_each_attr(a, sf_acts->actions, sf_acts->actions_len, rem) {
+		int type = nla_type(a);
+
+		switch (type) {
+		case OVS_ACTION_ATTR_BPF_PROG:
+			rt = nla_data(a);
+			bpf_prog_put(rt->prog);
+			break;
+		}
+	}
+
+	kfree(sf_acts);
+}
+
+static void free_flow_actions_rcu(struct rcu_head *head)
+{
+	struct sw_flow_actions *acts = container_of(head, struct sw_flow_actions, rcu);
+
+	free_flow_actions(acts);
+}
+
 /* Schedules 'sf_acts' to be freed after the next RCU grace period.
  * The caller must hold rcu_read_lock for this to be sensible. */
 void ovs_nla_free_flow_actions(struct sw_flow_actions *sf_acts)
 {
-	kfree_rcu(sf_acts, rcu);
+	call_rcu(&sf_acts->rcu, free_flow_actions_rcu);
 }
 
 static struct nlattr *reserve_sfa_size(struct sw_flow_actions **sfa,
@@ -1691,6 +1719,37 @@ static int validate_and_copy_sample(const struct nlattr *attr,
 
 	add_nested_action_end(*sfa, st_acts);
 	add_nested_action_end(*sfa, start);
+
+	return 0;
+}
+
+static int validate_and_copy_bpf(const struct nlattr *attr,
+				 struct sw_flow_actions **sfa,
+				 bool log)
+{
+	const struct ovs_action_bpf_prog *act_bpf = nla_data(attr);
+	struct ovs_action_bpf_runtime rt;
+	u32 fd;
+	int err;
+
+	fd = ntohl(act_bpf->prog_fd);
+	rt.prog = bpf_prog_get(fd);
+	if (!rt.prog)
+		return -EINVAL;
+
+	if (rt.prog->aux->prog_type != BPF_PROG_TYPE_OPENVSWITCH) {
+		bpf_prog_put(rt.prog);
+		return -EINVAL;
+	}
+
+	rt.fd = fd;
+	rt.arg0 = ntohl(act_bpf->arg0);
+	rt.arg1 = ntohl(act_bpf->arg1);
+
+	/* Validation done.  Rewrite the action with runtime datastructure. */
+	err = add_action(sfa, OVS_ACTION_ATTR_BPF_PROG, &rt, sizeof(rt), log);
+	if (err)
+		return err;
 
 	return 0;
 }
@@ -1966,7 +2025,9 @@ static int __ovs_nla_copy_actions(const struct nlattr *attr,
 			[OVS_ACTION_ATTR_POP_VLAN] = 0,
 			[OVS_ACTION_ATTR_SET] = (u32)-1,
 			[OVS_ACTION_ATTR_SAMPLE] = (u32)-1,
-			[OVS_ACTION_ATTR_HASH] = sizeof(struct ovs_action_hash)
+			[OVS_ACTION_ATTR_HASH] = sizeof(struct ovs_action_hash),
+			[OVS_ACTION_ATTR_BPF_PROG] =
+				sizeof(struct ovs_action_bpf_prog),
 		};
 		const struct ovs_action_push_vlan *vlan;
 		int type = nla_type(a);
@@ -2068,6 +2129,13 @@ static int __ovs_nla_copy_actions(const struct nlattr *attr,
 		case OVS_ACTION_ATTR_SAMPLE:
 			err = validate_and_copy_sample(a, key, depth, sfa,
 						       eth_type, vlan_tci, log);
+			if (err)
+				return err;
+			skip_copy = true;
+			break;
+
+		case OVS_ACTION_ATTR_BPF_PROG:
+			err = validate_and_copy_bpf(a, sfa, log);
 			if (err)
 				return err;
 			skip_copy = true;
@@ -2177,6 +2245,21 @@ static int set_action_to_attr(const struct nlattr *a, struct sk_buff *skb)
 	return 0;
 }
 
+static int bpf_action_to_attr(const struct nlattr *a, struct sk_buff *skb)
+{
+	const struct ovs_action_bpf_runtime *rt = nla_data(a);
+	struct ovs_action_bpf_prog prog;
+
+	prog.prog_fd = htonl(rt->fd);
+	prog.arg0 = htonl(rt->arg0);
+	prog.arg1 = htonl(rt->arg1);
+
+	if (nla_put(skb, OVS_ACTION_ATTR_BPF_PROG, sizeof(prog), &prog));
+		return -EMSGSIZE;
+
+	return 0;
+}
+
 int ovs_nla_put_actions(const struct nlattr *attr, int len, struct sk_buff *skb)
 {
 	const struct nlattr *a;
@@ -2197,6 +2280,11 @@ int ovs_nla_put_actions(const struct nlattr *attr, int len, struct sk_buff *skb)
 			if (err)
 				return err;
 			break;
+
+		case OVS_ACTION_ATTR_BPF_PROG:
+			err = bpf_action_to_attr(a, skb);
+			break;
+
 		default:
 			if (nla_put(skb, type, nla_len(a), nla_data(a)))
 				return -EMSGSIZE;

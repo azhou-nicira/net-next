@@ -38,7 +38,11 @@
 
 #include "datapath.h"
 #include "flow.h"
+#include "flow_netlink.h"
 #include "vport.h"
+
+typedef int (*ovs_bpf_func_t)(const struct ovs_bpf_action_ctxt *,
+			      const struct bpf_insn *);
 
 static int do_execute_actions(struct datapath *dp, struct sk_buff *skb,
 			      struct sw_flow_key *key,
@@ -747,6 +751,28 @@ static int execute_recirc(struct datapath *dp, struct sk_buff *skb,
 	return 0;
 }
 
+static int execute_bpf(struct sk_buff *skb, struct sw_flow_key *key,
+		       const struct nlattr *a)
+{
+	struct ovs_action_bpf_runtime *rt;
+	struct bpf_prog *prog;
+	struct ovs_bpf_action_ctxt ctxt;
+	ovs_bpf_func_t ovs_bpf_func;
+	int err;
+
+	rt = nla_data(a);
+	prog = rt->prog;
+
+	/* Build the BPF program runtime context. */
+	ctxt.skb = (void *)skb;
+	ctxt.arg0 = rt->arg0;
+	ctxt.arg1 = rt->arg1;
+
+	ovs_bpf_func = (ovs_bpf_func_t)(prog->bpf_func);
+	err = ovs_bpf_func(&ctxt, prog->insnsi);
+	return err;
+}
+
 /* Execute a list of actions against 'skb'. */
 static int do_execute_actions(struct datapath *dp, struct sk_buff *skb,
 			      struct sw_flow_key *key,
@@ -812,6 +838,10 @@ static int do_execute_actions(struct datapath *dp, struct sk_buff *skb,
 				 */
 				return err;
 			}
+			break;
+
+		case OVS_ACTION_ATTR_BPF_PROG:
+			err = execute_bpf(skb, key, a);
 			break;
 
 		case OVS_ACTION_ATTR_SET:
