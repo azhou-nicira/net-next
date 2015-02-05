@@ -2541,7 +2541,7 @@ int mlx4_SW2HW_MPT_wrapper(struct mlx4_dev *dev, int slave,
 	/* Make sure that the PD bits related to the slave id are zeros. */
 	pd = mr_get_pd(inbox->buf);
 	pd_slave = (pd >> 17) & 0x7f;
-	if (pd_slave != 0 && pd_slave != slave) {
+	if (pd_slave != 0 && --pd_slave != slave) {
 		err = -EPERM;
 		goto ex_abort;
 	}
@@ -2943,6 +2943,9 @@ static int verify_qp_parameters(struct mlx4_dev *dev,
 	qp_ctx  = inbox->buf + 8;
 	qp_type	= (be32_to_cpu(qp_ctx->flags) >> 16) & 0xff;
 	optpar	= be32_to_cpu(*(__be32 *) inbox->buf);
+
+	if (slave != mlx4_master_func_num(dev))
+		qp_ctx->params2 &= ~MLX4_QP_BIT_FPP;
 
 	switch (qp_type) {
 	case MLX4_QP_ST_RC:
