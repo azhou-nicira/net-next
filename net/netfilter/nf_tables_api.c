@@ -4184,6 +4184,56 @@ struct nft_object *nf_tables_obj_lookup(const struct nft_table *table,
 }
 EXPORT_SYMBOL_GPL(nf_tables_obj_lookup);
 
+
+static struct nft_table *nf_table_lookup(const struct nft_af_info *afi,
+					 const char *tablename,
+					 u8 genmask)
+{
+	struct nft_table *table;
+
+	if (!afi)
+		return NULL;
+
+	list_for_each_entry(table, &afi->tables, list) {
+		if (!strcmp(tablename, table->name) &&
+		    nft_active_genmask(table, genmask))
+			return table;
+	}
+	return NULL;
+}
+
+/* Global named object lookup.
+ *
+ * XXX For now, just look it up in the ipv4 table.
+ * XXX How about have a per net object space.
+ */
+struct nft_object *nf_obj_lookup(struct net *net, const char *tablename,
+				 const char *objname, const u32 objtype,
+				 u8 genmask)
+{
+	struct nft_object *obj;
+	struct nft_table *table;
+
+	if (!net)
+		goto failed;
+
+	/* XXX hard coded to ipv4 */
+	table = nf_table_lookup(net->nft.ipv4, tablename, genmask);
+	if (!table) {
+		goto failed;
+	}
+
+	list_for_each_entry(obj, &table->objects, list) {
+		if (!strcmp(objname, obj->name) &&
+		    objtype == obj->type->type &&
+		    nft_active_genmask(obj, genmask))
+			return obj;
+	}
+failed:
+	return ERR_PTR(-ENOENT);
+}
+EXPORT_SYMBOL_GPL(nf_obj_lookup);
+
 static const struct nla_policy nft_obj_policy[NFTA_OBJ_MAX + 1] = {
 	[NFTA_OBJ_TABLE]	= { .type = NLA_STRING,
 				    .len = NFT_TABLE_MAXNAMELEN - 1 },

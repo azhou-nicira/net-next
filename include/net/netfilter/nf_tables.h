@@ -1022,6 +1022,10 @@ struct nft_object *nf_tables_obj_lookup(const struct nft_table *table,
 					const struct nlattr *nla, u32 objtype,
 					u8 genmask);
 
+struct nft_object *nf_obj_lookup(struct net *net, const char *tablename,
+				 const char *objname, u32 objtype,
+				 u8 genmask);
+
 void nft_obj_notify(struct net *net, struct nft_table *table,
 		    struct nft_object *obj, u32 portid, u32 seq,
 		    int event, int family, int report, gfp_t gfp);
