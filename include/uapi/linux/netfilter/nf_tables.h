@@ -1054,6 +1054,57 @@ enum nft_quota_attributes {
 };
 #define NFTA_QUOTA_MAX		(__NFTA_QUOTA_MAX - 1)
 
+enum nft_meter_type_flags {
+	NFT_METER_F_KBPS	= 0,           /* K bits/s  */
+	NFT_METER_F_PPS		= (1 << 0),    /* Packets/s */
+	NFT_METER_F_CLAER_STATS = (1 << 1),    /* Clear stats. */
+};
+
+/**
+ * enum nft_meter_attributes - nf_tables meter object netlink attributes
+ *
+ * @NFTA_METER_TYPE_FLAGS:    enum nft_meter_type_flags
+ * @NFTA_METER_BANDS:         nested, array of NFTA_METER_BANDs
+ * @NFTA_METER_BAND:          nested, enum nft_meter_band_attributes
+ */
+enum nft_meter_attributes {
+	NFTA_METER_UNSPEC,
+	NFTA_METER_BYTES,
+	NFTA_METER_PACKETS,
+	NFTA_METER_FLAGS,
+	NFTA_METER_BAND,
+	NFTA_METER_BANDS,
+	__NFTA_METER_MAX,
+};
+#define NFTA_METER_MAX		(__NFTA_METER_MAX - 1)
+
+enum nft_meter_band_type {
+	NFT_METER_BAND_TYPE_DROP,
+	NFT_METER_BAND_TYPE_DSCP,
+};
+
+/**
+ * enum nft_meter_band_attributes -- nf_tables meter band netlink attributes
+ *
+ * @NFTA_METER_BYTE            NLA_U64
+ * @NFTA_METER_PACKETS         NLA_U64
+ * @NFTA_METER_RATE            NLA_U64
+ * @NFTA_METER_UNIT            NLA_U64
+ * @NFTA_METER_BURST           NLA_U64
+ * @NFTA_METER_BAND_TYPE:      NLA_U32, enum nft_meter_band_type
+ */
+enum nft_meter_band_attributes {
+	NFTA_METER_BAND_UNSPEC,
+	NFTA_METER_BAND_BYTES,
+	NFTA_METER_BAND_PACKETS,
+	NFTA_METER_BAND_RATE,
+	NFTA_METER_BAND_UNIT,
+	NFTA_METER_BAND_BURST,
+	NFTA_METER_BAND_TYPE,
+	__NFTA_METER_BAND_MAX,
+};
+#define NFTA_METER_BAND_MAX		(__NFTA_METER_BAND_MAX - 1)
+
 /**
  * enum nft_reject_types - nf_tables reject expression reject types
  *
@@ -1275,7 +1326,8 @@ enum nft_ct_helper_attributes {
 #define NFT_OBJECT_COUNTER	1
 #define NFT_OBJECT_QUOTA	2
 #define NFT_OBJECT_CT_HELPER	3
-#define __NFT_OBJECT_MAX	4
+#define NFT_OBJECT_METER	4
+#define __NFT_OBJECT_MAX	5
 #define NFT_OBJECT_MAX		(__NFT_OBJECT_MAX - 1)
 
 /**
