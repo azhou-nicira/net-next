@@ -1210,6 +1210,10 @@ static int do_execute_actions(struct datapath *dp, struct sk_buff *skb,
 		case OVS_ACTION_ATTR_POP_ETH:
 			err = pop_eth(skb, key);
 			break;
+
+		case OVS_ACTION_ATTR_METER:
+			/* XXX Nothing. */
+			break;
 		}
 
 		if (unlikely(err)) {

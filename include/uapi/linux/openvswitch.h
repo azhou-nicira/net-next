@@ -595,6 +595,12 @@ struct sample_arg {
 				      * 'OVS_SAMPLE_ATTR_PROBABILITY'.
 				      */
 };
+
+struct meter_arg {
+	u32 meter_id;                /* When true, actions in sample will not
+				      * change flow keys. False otherwise.  */
+	struct nft_object *meter_obj;/* NFT meter object. */
+};
 #endif
 
 /**
@@ -834,6 +840,7 @@ enum ovs_action_attr {
 	OVS_ACTION_ATTR_TRUNC,        /* u32 struct ovs_action_trunc. */
 	OVS_ACTION_ATTR_PUSH_ETH,     /* struct ovs_action_push_eth. */
 	OVS_ACTION_ATTR_POP_ETH,      /* No argument. */
+	OVS_ACTION_ATTR_METER,        /* u32 meter number. */
 
 	__OVS_ACTION_ATTR_MAX,	      /* Nothing past this will be accepted
 				       * from userspace. */

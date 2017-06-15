@@ -26,6 +26,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_vlan.h>
 #include <net/llc_pdu.h>
+#include <net/netfilter/nf_tables.h>
 #include <linux/kernel.h>
 #include <linux/jhash.h>
 #include <linux/jiffies.h>
@@ -72,6 +73,7 @@ static bool actions_may_change_flow(const struct nlattr *actions)
 		case OVS_ACTION_ATTR_RECIRC:
 		case OVS_ACTION_ATTR_TRUNC:
 		case OVS_ACTION_ATTR_USERSPACE:
+		case OVS_ACTION_ATTR_METER:
 			break;
 
 		case OVS_ACTION_ATTR_CT:
@@ -2124,6 +2126,34 @@ static int validate_and_copy_sample(struct net *net, const struct nlattr *attr,
 	return 0;
 }
 
+static int validate_and_copy_meter(struct net *net, const struct nlattr *attr,
+				   struct sw_flow_actions **sfa, bool log)
+{
+	u32 meter_id = nla_get_u32(attr);
+	char meter_name[16];
+	struct nft_object *meter_obj;
+	struct meter_arg arg;
+	int err;
+
+	snprintf(meter_name, 16, "m%d", meter_id);
+	meter_obj = nf_obj_lookup(net, "filter", meter_name, NFT_OBJECT_METER, 0);
+
+	if (!meter_obj) {
+		return -EINVAL;
+	}
+
+	arg.meter_id = meter_id;
+	arg.meter_obj = meter_obj;
+
+	err = ovs_nla_add_action(sfa, OVS_ACTION_ATTR_METER, &arg,
+				 sizeof(arg), log);
+
+	if (err)
+		return err;
+
+	return 0;
+}
+
 void ovs_match_init(struct sw_flow_match *match,
 		    struct sw_flow_key *key,
 		    bool reset_key,
@@ -2480,6 +2510,7 @@ static int __ovs_nla_copy_actions(struct net *net, const struct nlattr *attr,
 			[OVS_ACTION_ATTR_TRUNC] = sizeof(struct ovs_action_trunc),
 			[OVS_ACTION_ATTR_PUSH_ETH] = sizeof(struct ovs_action_push_eth),
 			[OVS_ACTION_ATTR_POP_ETH] = 0,
+			[OVS_ACTION_ATTR_METER] = sizeof(u32),
 		};
 		const struct ovs_action_push_vlan *vlan;
 		int type = nla_type(a);
@@ -2633,6 +2664,13 @@ static int __ovs_nla_copy_actions(struct net *net, const struct nlattr *attr,
 				return -EINVAL;
 			mac_proto = MAC_PROTO_ETHERNET;
 			break;
+		
+		case OVS_ACTION_ATTR_METER:
+			err = validate_and_copy_meter(net, a, sfa, log);
+			if (err)
+				return err;
+			skip_copy = true;
+			break;
 
 		default:
 			OVS_NLERR(log, "Unknown Action type %d", type);
@@ -2710,6 +2748,17 @@ out:
 	}
 
 	return err;
+}
+
+static int ovs_meter_action_to_attr(const struct nlattr *attr,
+				    struct sk_buff *skb)
+{
+	const struct meter_arg *arg = nla_data(attr);
+
+	if (nla_put_u32(skb, OVS_ACTION_ATTR_METER, arg->meter_id))
+		return -EMSGSIZE;
+
+	return 0;
 }
 
 static int set_action_to_attr(const struct nlattr *a, struct sk_buff *skb)
@@ -2796,6 +2845,12 @@ int ovs_nla_put_actions(const struct nlattr *attr, int len, struct sk_buff *skb)
 
 		case OVS_ACTION_ATTR_CT:
 			err = ovs_ct_action_to_attr(nla_data(a), skb);
+			if (err)
+				return err;
+			break;
+
+		case OVS_ACTION_ATTR_METER:
+			err = ovs_meter_action_to_attr(nla_data(a), skb);
 			if (err)
 				return err;
 			break;
